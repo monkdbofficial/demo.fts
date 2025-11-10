@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Unified Search & Chat Demo</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #0f172a;
+      color: #e5e7eb;
+    }
+    .layout {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .header {
+      margin-bottom: 24px;
+    }
+    .header h1 {
+      margin: 0 0 4px;
+    }
+    .header p {
+      margin: 0;
+      color: #9ca3af;
+      font-size: 0.9rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 2fr 1.5fr;
+      gap: 16px;
+    }
+    .card {
+      background-color: #111827;
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+      border: 1px solid #1f2937;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .input,
+    .select,
+    .textarea {
+      background-color: #020817;
+      border: 1px solid #374151;
+      color: #e5e7eb;
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 0.9rem;
+    }
+    .textarea {
+      width: 100%;
+      resize: vertical;
+    }
+    .input:focus,
+    .select:focus,
+    .textarea:focus {
+      outline: none;
+      border-color: #38bdf8;
+    }
+    .btn {
+      padding: 8px 14px;
+      background: linear-gradient(to right, #38bdf8, #6366f1);
+      border: none;
+      border-radius: 999px;
+      color: #020817;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .alpha-label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.75rem;
+      color: #9ca3af;
+    }
+    .alpha-range {
+      width: 80px;
+    }
+    .results {
+      margin-top: 8px;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+    .result-item {
+      padding: 8px 10px;
+      border-radius: 10px;
+      background-color: #020817;
+      border: 1px solid #111827;
+      margin-bottom: 6px;
+      font-size: 0.8rem;
+    }
+    .result-header {
+      display: flex;
+      gap: 8px;
+      font-size: 0.7rem;
+      color: #9ca3af;
+      flex-wrap: wrap;
+    }
+    .pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      background-color: #111827;
+    }
+    .result-title {
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .result-body {
+      font-size: 0.78rem;
+      color: #9ca3af;
+      margin-top: 2px;
+    }
+    .result-scores {
+      font-size: 0.7rem;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+    .error {
+      margin-top: 6px;
+      color: #f97316;
+      font-size: 0.85rem;
+    }
+    .muted {
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-top: 6px;
+    }
+    .answer {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+    }
+    .sources {
+      font-size: 0.78rem;
+      color: #9ca3af;
+      padding-left: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <header class="header">
+      <h1>Unified Search & Chat Demo</h1>
+      <p>Global hybrid search + numeric filters + chatbot over MonkDB (doc.app_search) using Mistral via Ollama.</p>
+    </header>
+
+    <main class="grid">
+      <!-- Global Search Panel -->
+      <section class="card">
+        <h2>Global Search</h2>
+        <div class="row">
+          <input id="q" class="input" placeholder="Search across entities..." />
+          <button id="searchBtn" class="btn">Search</button>
+        </div>
+
+        <div class="row">
+          <select id="entityType" class="select">
+            <option value="">All types</option>
+            <option value="order">Orders</option>
+            <option value="ticket">Tickets</option>
+            <option value="event">Events</option>
+            <option value="faq">FAQs</option>
+          </select>
+
+          <input id="minAmount" class="input" type="number" placeholder="Min amount" />
+          <input id="maxAmount" class="input" type="number" placeholder="Max amount" />
+
+          <label class="alpha-label">
+            α
+            <input id="alpha" class="alpha-range" type="range" min="0" max="1" step="0.1" value="0.6" />
+            <span id="alphaValue">0.6</span>
+          </label>
+        </div>
+
+        <div id="searchError" class="error" style="display:none;"></div>
+        <div id="searchResults" class="results"></div>
+      </section>
+
+      <!-- Chatbot Panel -->
+      <section class="card">
+        <h2>Chatbot</h2>
+        <textarea id="chatQuestion" class="textarea" rows="4"
+          placeholder="Ask a question over your indexed data..."></textarea>
+        <div class="row">
+          <button id="chatBtn" class="btn">Ask</button>
+        </div>
+        <div id="chatError" class="error" style="display:none;"></div>
+        <div id="chatAnswer" class="answer"></div>
+        <div id="chatSources"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const API_BASE = "http://localhost:8000";
+
+    const qInput = document.getElementById("q");
+    const entityTypeInput = document.getElementById("entityType");
+    const minAmountInput = document.getElementById("minAmount");
+    const maxAmountInput = document.getElementById("maxAmount");
+    const alphaInput = document.getElementById("alpha");
+    const alphaValue = document.getElementById("alphaValue");
+    const searchBtn = document.getElementById("searchBtn");
+    const searchResults = document.getElementById("searchResults");
+    const searchError = document.getElementById("searchError");
+
+    const chatQuestion = document.getElementById("chatQuestion");
+    const chatBtn = document.getElementById("chatBtn");
+    const chatAnswer = document.getElementById("chatAnswer");
+    const chatSources = document.getElementById("chatSources");
+    const chatError = document.getElementById("chatError");
+
+    alphaInput.addEventListener("input", () => {
+      alphaValue.textContent = parseFloat(alphaInput.value).toFixed(1);
+    });
+
+    async function runSearch() {
+      searchError.style.display = "none";
+      searchError.textContent = "";
+      searchResults.innerHTML = "";
+
+      const q = qInput.value.trim();
+      if (!q) {
+        searchError.textContent = "Please enter a search query.";
+        searchError.style.display = "block";
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.set("q", q);
+      params.set("alpha", alphaInput.value);
+
+      const et = entityTypeInput.value.trim();
+      if (et) params.set("entity_type", et);
+
+      const minA = minAmountInput.value.trim();
+      if (minA) params.set("min_amount", minA);
+
+      const maxA = maxAmountInput.value.trim();
+      if (maxA) params.set("max_amount", maxA);
+
+      searchBtn.disabled = true;
+      searchBtn.textContent = "Searching...";
+
+      try {
+        const res = await fetch(`${API_BASE}/search/hybrid?${params.toString()}`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (!data.length) {
+          searchResults.innerHTML = '<div class="muted">No results.</div>';
+          return;
+        }
+        for (const r of data) {
+          const div = document.createElement("div");
+          div.className = "result-item";
+          div.innerHTML = `
+            <div class="result-header">
+              <span class="pill">${r.entity_type}</span>
+              <span>₹${r.amount}</span>
+              <span>prio ${r.priority_score}</span>
+            </div>
+            <div class="result-title">${escapeHtml(r.title)}</div>
+            <div class="result-body">${escapeHtml(r.body_snippet)}</div>
+            <div class="result-scores">
+              text: ${r.score_text.toFixed(2)} |
+              vec: ${r.score_vector.toFixed(2)} |
+              hybrid: ${r.score_hybrid.toFixed(2)}
+            </div>
+          `;
+          searchResults.appendChild(div);
+        }
+      } catch (err) {
+        searchError.textContent = "Search failed: " + err.message;
+        searchError.style.display = "block";
+      } finally {
+        searchBtn.disabled = false;
+        searchBtn.textContent = "Search";
+      }
+    }
+
+    async function runChat() {
+      chatError.style.display = "none";
+      chatError.textContent = "";
+      chatAnswer.textContent = "";
+      chatSources.innerHTML = "";
+
+      const question = chatQuestion.value.trim();
+      if (!question) {
+        chatError.textContent = "Please type a question.";
+        chatError.style.display = "block";
+        return;
+      }
+
+      chatBtn.disabled = true;
+      chatBtn.textContent = "Thinking...";
+
+      try {
+        const res = await fetch(`${API_BASE}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        chatAnswer.textContent = data.answer || "(No answer)";
+        if (data.sources && data.sources.length) {
+          const ul = document.createElement("ul");
+          ul.className = "sources";
+          for (const s of data.sources) {
+            const li = document.createElement("li");
+            li.innerHTML = `
+              <strong>${escapeHtml(s.title)}</strong>
+              [${s.entity_type}] • ₹${s.amount} •
+              hybrid ${s.score_hybrid.toFixed(2)}
+            `;
+            ul.appendChild(li);
+          }
+          chatSources.innerHTML = "<h4>Sources</h4>";
+          chatSources.appendChild(ul);
+        }
+      } catch (err) {
+        chatError.textContent = "Chat failed: " + err.message;
+        chatError.style.display = "block";
+      } finally {
+        chatBtn.disabled = false;
+        chatBtn.textContent = "Ask";
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    searchBtn.addEventListener("click", runSearch);
+    chatBtn.addEventListener("click", runChat);
+
+    qInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        runSearch();
+      }
+    });
+    chatQuestion.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        runChat();
+      }
+    });
+  </script>
+</body>
+</html>

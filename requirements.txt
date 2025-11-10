@@ -1,0 +1,11 @@
+monkdb
+fastapi
+uvicorn[standard]
+pydantic
+sentence-transformers
+torch
+python-dotenv
+httpx
+huggingface_hub
+datasets
+requests
