@@ -9,3 +9,8 @@ httpx
 huggingface_hub
 datasets
 requests
+pdf2image
+pytesseract
+pillow
+pdfminer.six
+python-multipart

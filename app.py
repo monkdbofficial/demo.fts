@@ -1,5 +1,14 @@
 import os
 from typing import List, Dict, Any, Optional
+import io
+import re
+import uuid
+import base64
+from datetime import datetime
+from fastapi import File, UploadFile, Body
+from pdfminer.high_level import extract_text as pdf_extract_text
+from pdf2image import convert_from_bytes
+import pytesseract
 
 import requests
 from fastapi import FastAPI, Query, HTTPException
@@ -264,9 +273,332 @@ def call_ollama_chat(prompt: str) -> str:
             status_code=500, detail="Unexpected Ollama response format")
 
 
+def _now():
+    return datetime.utcnow()
+
+
+def _uuid():
+    return uuid.uuid4().hex
+
+
+def extract_text_from_pdf_bytes(pdf_bytes: bytes, do_ocr_fallback: bool = True) -> Dict[str, Any]:
+    """
+    Returns: { 'text_full': str, 'pages': [{'page_no':1,'text': '...'}], 'page_count': N, 'used_ocr': bool }
+    """
+    text = ""
+    pages_info = []
+    used_ocr = False
+
+    # Try digital text first
+    try:
+        text = pdf_extract_text(io.BytesIO(pdf_bytes)) or ""
+    except Exception:
+        text = ""
+
+    # If no text and OCR allowed → rasterize pages and OCR
+    if not text.strip() and do_ocr_fallback:
+        images = convert_from_bytes(pdf_bytes, dpi=200)
+        for idx, img in enumerate(images, start=1):
+            pg_text = pytesseract.image_to_string(img)
+            pages_info.append({"page_no": idx, "text": pg_text})
+            text += f"\n\n{pg_text}"
+        used_ocr = True
+        page_count = len(images)
+    else:
+        # Split by simple page separators heuristic (keeps it lightweight)
+        raw_pages = [p for p in text.split('\f') if p is not None]
+        if len(raw_pages) <= 1:
+            # fallback: naive chunk by ~3000 chars
+            raw_pages = [text[i:i+3000]
+                         for i in range(0, len(text), 3000)] or [text]
+        for i, pg in enumerate(raw_pages, start=1):
+            pages_info.append({"page_no": i, "text": pg})
+        page_count = len(pages_info)
+
+    return {
+        "text_full": text.strip(),
+        "pages": pages_info,
+        "page_count": page_count,
+        "used_ocr": used_ocr
+    }
+
+
+def yield_chunks(filename: str, pages: List[Dict[str, Any]], max_tokens: int = 500, overlap: int = 80):
+    """
+    Simple paragraph/length-aware chunker. Keeps order; tags with page_no.
+    """
+    for pg in pages:
+        page_no = pg["page_no"]
+        txt = (pg["text"] or "").strip()
+        if not txt:
+            continue
+        # split on blank lines as crude layout proxy
+        blocks = [b.strip() for b in re.split(r"\n\s*\n", txt) if b.strip()]
+        buf = []
+        size = 0
+        for blk in blocks:
+            tokens = max(1, len(blk.split()))
+            if size + tokens <= max_tokens:
+                buf.append(blk)
+                size += tokens
+            else:
+                if buf:
+                    content = "\n\n".join(buf)
+                    yield page_no, content
+                # overlap by tail of previous
+                tail = " ".join((" ".join(buf)).split()
+                                [-overlap:]) if buf else ""
+                buf = [tail, blk] if tail else [blk]
+                size = len(" ".join(buf).split())
+        if buf:
+            content = "\n\n".join(buf)
+            yield page_no, content
+
+
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+URL_RE = re.compile(r"https?://[^\s)]+")
+DATE_RE = re.compile(
+    r"(?:(?:\d{1,2}[/.-]){2}\d{2,4})|(?:\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{2,4})", re.I)
+TITLE_RE = re.compile(r"^\s*(.+?)\n", re.S)
+
+
+def simple_extract_fields(text_full: str) -> List[Dict[str, Any]]:
+    results = []
+
+    def add(field, value, conf, evidence_snippet):
+        results.append({
+            "field_name": field,
+            "field_value": value,
+            "confidence": float(conf),
+            "evidence": {"snippet": evidence_snippet[:240]}
+        })
+
+    # Title heuristic = first non-empty line
+    m = TITLE_RE.search(text_full)
+    if m:
+        title = m.group(1).strip()
+        add("title", title, 0.6, title)
+
+    # Dates
+    dates = DATE_RE.findall(text_full)
+    for d in list(set(dates))[:5]:
+        add("date", d, 0.5, d)
+
+    # Emails
+    emails = EMAIL_RE.findall(text_full)
+    for e in list(set(emails))[:10]:
+        add("email", e, 0.9, e)
+
+    # URLs
+    urls = URL_RE.findall(text_full)
+    for u in list(set(urls))[:10]:
+        add("url", u, 0.8, u)
+
+    return results
+
+
+def ensure_tables_exist():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS doc.documents (
+      doc_id TEXT PRIMARY KEY, filename TEXT, mime_type TEXT, page_count INTEGER,
+      source_uri TEXT, tags ARRAY(TEXT), text_full TEXT,
+      created_at TIMESTAMP WITH TIME ZONE, status TEXT, error TEXT,
+      INDEX ft_all USING FULLTEXT (text_full) WITH (analyzer='english')
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS doc.extractions (
+      extract_id TEXT PRIMARY KEY, doc_id TEXT, schema_name TEXT,
+      field_name TEXT, field_value TEXT, field_num DOUBLE, confidence DOUBLE,
+      evidence OBJECT(DYNAMIC), is_approved BOOLEAN, corrected_value TEXT,
+      created_at TIMESTAMP WITH TIME ZONE
+    )
+    """)
+    conn.close()
+
+
+def insert_document_row(doc_id: str, filename: str, mime: str, page_count: int, source_uri: str, text_full: str, status: str, error: str = None):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+      INSERT INTO doc.documents (doc_id, filename, mime_type, page_count, source_uri, text_full, created_at, status, error)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (doc_id) DO UPDATE SET
+        filename = EXCLUDED.filename, mime_type = EXCLUDED.mime_type, page_count = EXCLUDED.page_count,
+        source_uri = EXCLUDED.source_uri, text_full = EXCLUDED.text_full,
+        status = EXCLUDED.status, error = EXCLUDED.error
+    """, (doc_id, filename, mime, page_count, source_uri, text_full, _now(), status, error))
+    conn.close()
+
+
+def bulk_insert_chunks_into_app_search(doc_id: str, filename: str, chunks: List[Dict[str, Any]]):
+    conn = get_conn()
+    cur = conn.cursor()
+    for ch in chunks:
+        title = f"{filename} — p{ch['page_no']}"
+        body = ch["content"]
+        emb = embed_model.encode(
+            title + "\n" + body, normalize_embeddings=True).tolist()
+        rec_id = _uuid()
+        cur.execute("""
+            INSERT INTO doc.app_search (id, entity_type, title, body, amount, priority_score, created_at, embedding)
+            VALUES (?, 'document', ?, ?, 0.0, 0.0, ?, ?)
+        """, (rec_id, title, body, _now(), emb))
+    conn.close()
+
+
+def bulk_insert_extractions(doc_id: str, fields: List[Dict[str, Any]]):
+    conn = get_conn()
+    cur = conn.cursor()
+    rows = []
+    for f in fields:
+        rows.append((
+            _uuid(
+            ), doc_id, "generic_doc.v1", f["field_name"], f["field_value"],
+            None, float(f["confidence"]), f.get(
+                "evidence", {}), False, None, _now()
+        ))
+    cur.executemany("""
+      INSERT INTO doc.extractions
+        (extract_id, doc_id, schema_name, field_name, field_value, field_num,
+         confidence, evidence, is_approved, corrected_value, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, rows)
+    conn.close()
+
+
+class FetchRequest(BaseModel):
+    url: str
+    filename: Optional[str] = None
+
+
+@app.post("/documents/fetch")
+def documents_fetch(req: FetchRequest):
+    ensure_tables_exist()
+    try:
+        r = requests.get(req.url, timeout=60)
+        r.raise_for_status()
+        pdf_bytes = r.content
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=400, detail=f"Failed to download PDF: {e}")
+
+    filename = req.filename or req.url.split("/")[-1] or "document.pdf"
+    doc_id = _uuid()
+
+    insert_document_row(doc_id, filename, "application/pdf",
+                        0, req.url, "", "processing")
+
+    try:
+        parsed = extract_text_from_pdf_bytes(pdf_bytes)
+        text_full = parsed["text_full"]
+        page_count = parsed["page_count"]
+
+        # Chunk + index into app_search
+        chunks = []
+        for page_no, content in yield_chunks(filename, parsed["pages"]):
+            chunks.append({"page_no": page_no, "content": content})
+        if chunks:
+            bulk_insert_chunks_into_app_search(doc_id, filename, chunks)
+
+        # Write document row
+        insert_document_row(doc_id, filename, "application/pdf",
+                            page_count, req.url, text_full, "ready")
+
+        # Simple field extraction + validation
+        fields = simple_extract_fields(text_full)
+        bulk_insert_extractions(doc_id, fields)
+
+        return {"doc_id": doc_id, "filename": filename, "page_count": page_count, "chunks_indexed": len(chunks), "fields_extracted": len(fields)}
+    except Exception as e:
+        insert_document_row(doc_id, filename, "application/pdf",
+                            0, req.url, "", "error", str(e))
+        raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
+
+
+@app.post("/documents/upload")
+async def documents_upload(file: UploadFile = File(...)):
+    ensure_tables_exist()
+    if file.content_type not in ("application/pdf",):
+        raise HTTPException(
+            status_code=400, detail="Only PDFs are supported in this demo")
+    pdf_bytes = await file.read()
+    filename = file.filename or "document.pdf"
+    # reuse logic via in-memory fetch path
+    tmp = requests.models.Response()
+    # call the same core (copy of above minus requests.get)
+    doc_id = _uuid()
+    insert_document_row(doc_id, filename, "application/pdf",
+                        0, "upload://local", "", "processing")
+    try:
+        parsed = extract_text_from_pdf_bytes(pdf_bytes)
+        text_full = parsed["text_full"]
+        page_count = parsed["page_count"]
+        chunks = []
+        for page_no, content in yield_chunks(filename, parsed["pages"]):
+            chunks.append({"page_no": page_no, "content": content})
+        if chunks:
+            bulk_insert_chunks_into_app_search(doc_id, filename, chunks)
+        insert_document_row(doc_id, filename, "application/pdf",
+                            page_count, "upload://local", text_full, "ready")
+        fields = simple_extract_fields(text_full)
+        bulk_insert_extractions(doc_id, fields)
+        return {"doc_id": doc_id, "filename": filename, "page_count": page_count, "chunks_indexed": len(chunks), "fields_extracted": len(fields)}
+    except Exception as e:
+        insert_document_row(doc_id, filename, "application/pdf",
+                            0, "upload://local", "", "error", str(e))
+        raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
+
+
+@app.get("/extractions/{doc_id}")
+def get_extractions(doc_id: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT extract_id, schema_name, field_name, field_value, confidence, evidence, is_approved, corrected_value, created_at
+      FROM doc.extractions
+      WHERE doc_id = ?
+      ORDER BY confidence DESC, created_at DESC
+    """, (doc_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return [
+        {
+            "extract_id": r[0],
+            "schema_name": r[1],
+            "field_name": r[2],
+            "field_value": r[3],
+            "confidence": float(r[4]) if r[4] is not None else None,
+            "evidence": r[5],
+            "is_approved": bool(r[6]) if r[6] is not None else False,
+            "corrected_value": r[7],
+            "created_at": r[8].isoformat() if r[8] else None
+        } for r in rows
+    ]
+
+
+class ReviewRequest(BaseModel):
+    corrected_value: str
+
+
+@app.post("/review/{extract_id}")
+def review_update(extract_id: str, req: ReviewRequest):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+      UPDATE doc.extractions
+      SET is_approved = TRUE, corrected_value = ?
+      WHERE extract_id = ?
+    """, (req.corrected_value, extract_id))
+    conn.close()
+    return {"ok": True, "extract_id": extract_id}
+
 # -------------------------
 # Public APIs
 # -------------------------
+
 
 @app.get("/health")
 def health():

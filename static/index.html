@@ -2,168 +2,122 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Unified Search & Chat Demo</title>
+  <title>Unified Search & Chat + IDP Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --muted: #9ca3af;
+      --muted-2: #6b7280;
+      --ink: #e5e7eb;
+      --border: #1f2937;
+      --input: #020817;
+      --accent-1: #38bdf8;
+      --accent-2: #6366f1;
+      --warn: #f97316;
+    }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-      background-color: #0f172a;
-      color: #e5e7eb;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background-color: var(--bg);
+      color: var(--ink);
     }
     .layout {
-      max-width: 1100px;
+      max-width: 1180px;
       margin: 0 auto;
       padding: 24px;
     }
-    .header {
-      margin-bottom: 24px;
-    }
-    .header h1 {
-      margin: 0 0 4px;
-    }
-    .header p {
-      margin: 0;
-      color: #9ca3af;
-      font-size: 0.9rem;
-    }
+    .header { margin-bottom: 24px; }
+    .header h1 { margin: 0 0 6px; font-size: 1.6rem; }
+    .header p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
     .grid {
       display: grid;
       grid-template-columns: 2fr 1.5fr;
       gap: 16px;
     }
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
     .card {
-      background-color: #111827;
+      background-color: var(--card);
       border-radius: 16px;
       padding: 16px;
       box-shadow: 0 10px 25px rgba(0,0,0,0.4);
-      border: 1px solid #1f2937;
+      border: 1px solid var(--border);
     }
     .row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 8px;
-      align-items: center;
-      flex-wrap: wrap;
+      display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;
     }
-    .input,
-    .select,
-    .textarea {
-      background-color: #020817;
+    .col { display: flex; flex-direction: column; gap: 8px; }
+
+    .input, .select, .textarea, .file {
+      background-color: var(--input);
       border: 1px solid #374151;
-      color: #e5e7eb;
+      color: var(--ink);
       border-radius: 8px;
       padding: 8px;
-      font-size: 0.9rem;
+      font-size: 0.95rem;
     }
-    .textarea {
-      width: 100%;
-      resize: vertical;
-    }
-    .input:focus,
-    .select:focus,
-    .textarea:focus {
-      outline: none;
-      border-color: #38bdf8;
-    }
+    .textarea { width: 100%; resize: vertical; }
+    .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--accent-1); }
+
     .btn {
       padding: 8px 14px;
-      background: linear-gradient(to right, #38bdf8, #6366f1);
+      background: linear-gradient(to right, var(--accent-1), var(--accent-2));
       border: none;
       border-radius: 999px;
-      color: #020817;
+      color: var(--input);
       font-weight: 600;
       cursor: pointer;
       font-size: 0.9rem;
       white-space: nowrap;
     }
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-    .alpha-label {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 0.75rem;
-      color: #9ca3af;
-    }
-    .alpha-range {
-      width: 80px;
-    }
-    .results {
-      margin-top: 8px;
-      max-height: 420px;
-      overflow-y: auto;
-    }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+
+    .alpha-label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
+    .alpha-range { width: 110px; }
+
+    .results { margin-top: 8px; max-height: 420px; overflow-y: auto; }
     .result-item {
-      padding: 8px 10px;
+      padding: 10px 12px;
       border-radius: 10px;
-      background-color: #020817;
+      background-color: var(--input);
       border: 1px solid #111827;
-      margin-bottom: 6px;
-      font-size: 0.8rem;
-    }
-    .result-header {
-      display: flex;
-      gap: 8px;
-      font-size: 0.7rem;
-      color: #9ca3af;
-      flex-wrap: wrap;
-    }
-    .pill {
-      padding: 2px 8px;
-      border-radius: 999px;
-      background-color: #111827;
-    }
-    .result-title {
-      font-weight: 600;
-      margin-top: 4px;
-    }
-    .result-body {
-      font-size: 0.78rem;
-      color: #9ca3af;
-      margin-top: 2px;
-    }
-    .result-scores {
-      font-size: 0.7rem;
-      color: #6b7280;
-      margin-top: 2px;
-    }
-    .error {
-      margin-top: 6px;
-      color: #f97316;
+      margin-bottom: 8px;
       font-size: 0.85rem;
     }
-    .muted {
-      font-size: 0.85rem;
-      color: #6b7280;
-      margin-top: 6px;
-    }
-    .answer {
-      margin-top: 8px;
-      font-size: 0.9rem;
-      white-space: pre-wrap;
-    }
-    .sources {
-      font-size: 0.78rem;
-      color: #9ca3af;
-      padding-left: 16px;
-    }
+    .result-header { display: flex; gap: 8px; font-size: 0.75rem; color: var(--muted); flex-wrap: wrap; }
+    .pill { padding: 2px 8px; border-radius: 999px; background-color: #111827; }
+    .result-title { font-weight: 700; margin-top: 6px; }
+    .result-body { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+    .result-scores { font-size: 0.75rem; color: var(--muted-2); margin-top: 4px; }
+
+    .error { margin-top: 6px; color: var(--warn); font-size: 0.9rem; }
+    .muted { font-size: 0.9rem; color: var(--muted-2); margin-top: 6px; }
+    .answer { margin-top: 8px; font-size: 0.98rem; white-space: pre-wrap; }
+    .sources { font-size: 0.85rem; color: var(--muted); padding-left: 16px; }
+    .section-title { margin: 0 0 10px; }
+    .divider { height: 1px; background: var(--border); margin: 12px 0; border-radius: 999px; }
+    .small { font-size: 0.8rem; color: var(--muted); }
   </style>
 </head>
 <body>
   <div class="layout">
     <header class="header">
-      <h1>Unified Search & Chat Demo</h1>
-      <p>Global hybrid search + numeric filters + chatbot over MonkDB (doc.app_search) using Mistral via Ollama.</p>
+      <h1>Unified Search, Chat & IDP Demo</h1>
+      <p>Hybrid full-text + vector search, chat over results, and PDF → text → extraction pipeline on MonkDB.</p>
     </header>
 
     <main class="grid">
-      <!-- Global Search Panel -->
+      <!-- LEFT: Search + IDP Controls -->
       <section class="card">
-        <h2>Global Search</h2>
+        <h2 class="section-title">Global Search</h2>
         <div class="row">
-          <input id="q" class="input" placeholder="Search across entities..." />
+          <input id="q" class="input" placeholder="Search across entities & documents..." style="flex:1" />
           <button id="searchBtn" class="btn">Search</button>
         </div>
 
@@ -174,13 +128,14 @@
             <option value="ticket">Tickets</option>
             <option value="event">Events</option>
             <option value="faq">FAQs</option>
+            <option value="document">Documents</option>
           </select>
 
-          <input id="minAmount" class="input" type="number" placeholder="Min amount" />
-          <input id="maxAmount" class="input" type="number" placeholder="Max amount" />
+          <input id="minAmount" class="input" type="number" step="0.01" placeholder="Min amount" />
+          <input id="maxAmount" class="input" type="number" step="0.01" placeholder="Max amount" />
 
           <label class="alpha-label">
-            α
+            α (hybrid weight)
             <input id="alpha" class="alpha-range" type="range" min="0" max="1" step="0.1" value="0.6" />
             <span id="alphaValue">0.6</span>
           </label>
@@ -188,13 +143,28 @@
 
         <div id="searchError" class="error" style="display:none;"></div>
         <div id="searchResults" class="results"></div>
+
+        <div class="divider"></div>
+
+        <h2 class="section-title">Process PDF (URL)</h2>
+        <div class="row">
+          <input id="pdfUrl" class="input" placeholder="https://www.princexml.com/samples/newsletter/drylab.pdf" style="flex:1" />
+          <button id="pdfFetchBtn" class="btn">Fetch & Process</button>
+        </div>
+        <div id="pdfFetchMsg" class="muted"></div>
+
+        <div class="divider"></div>
+
+        <h2 class="section-title">Extractions (Last Processed Doc)</h2>
+        <div id="extractionsList" class="results"></div>
+
+        <p class="small">Tip: After processing a PDF, use Global Search with <strong>entity_type = document</strong> to search its chunks, or ask the Chatbot on the right.</p>
       </section>
 
-      <!-- Chatbot Panel -->
+      <!-- RIGHT: Chat -->
       <section class="card">
-        <h2>Chatbot</h2>
-        <textarea id="chatQuestion" class="textarea" rows="4"
-          placeholder="Ask a question over your indexed data..."></textarea>
+        <h2 class="section-title">Chatbot</h2>
+        <textarea id="chatQuestion" class="textarea" rows="5" placeholder="Ask a question over your indexed data...&#10;e.g., What are the highlights of the DryLab newsletter?"></textarea>
         <div class="row">
           <button id="chatBtn" class="btn">Ask</button>
         </div>
@@ -206,8 +176,14 @@
   </div>
 
   <script>
-    const API_BASE = "http://localhost:8000";
+    // =======================
+    // Config
+    // =======================
+    const API_BASE = (window.API_BASE_OVERRIDE) || "http://localhost:8000";
 
+    // =======================
+    // DOM refs
+    // =======================
     const qInput = document.getElementById("q");
     const entityTypeInput = document.getElementById("entityType");
     const minAmountInput = document.getElementById("minAmount");
@@ -224,10 +200,52 @@
     const chatSources = document.getElementById("chatSources");
     const chatError = document.getElementById("chatError");
 
+    const pdfUrl = document.getElementById("pdfUrl");
+    const pdfFetchBtn = document.getElementById("pdfFetchBtn");
+    const pdfFetchMsg = document.getElementById("pdfFetchMsg");
+    const extractionsList = document.getElementById("extractionsList");
+
+    let lastDocId = null;
+
+    // =======================
+    // Utilities
+    // =======================
+    function escapeHtml(str) {
+      return String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function fmtMoney(n) {
+      if (n == null || isNaN(n)) return "₹0";
+      try { return "₹" + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
+      catch { return "₹" + n; }
+    }
+
+    function renderSources(list) {
+      if (!list || !list.length) return "";
+      return `
+        <h4>Sources</h4>
+        <ul class="sources">
+          ${list.map(s => `
+            <li>
+              <strong>${escapeHtml(s.title)}</strong>
+              [${escapeHtml(s.entity_type)}] • ${fmtMoney(s.amount)}
+              • hybrid ${Number(s.score_hybrid).toFixed(2)}
+            </li>
+          `).join("")}
+        </ul>
+      `;
+    }
+
     alphaInput.addEventListener("input", () => {
       alphaValue.textContent = parseFloat(alphaInput.value).toFixed(1);
     });
 
+    // =======================
+    // Search
+    // =======================
     async function runSearch() {
       searchError.style.display = "none";
       searchError.textContent = "";
@@ -258,9 +276,7 @@
 
       try {
         const res = await fetch(`${API_BASE}/search/hybrid?${params.toString()}`);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!data.length) {
           searchResults.innerHTML = '<div class="muted">No results.</div>';
@@ -271,16 +287,16 @@
           div.className = "result-item";
           div.innerHTML = `
             <div class="result-header">
-              <span class="pill">${r.entity_type}</span>
-              <span>₹${r.amount}</span>
-              <span>prio ${r.priority_score}</span>
+              <span class="pill">${escapeHtml(r.entity_type)}</span>
+              <span>${fmtMoney(r.amount)}</span>
+              <span>prio ${Number(r.priority_score).toFixed(2)}</span>
             </div>
             <div class="result-title">${escapeHtml(r.title)}</div>
             <div class="result-body">${escapeHtml(r.body_snippet)}</div>
             <div class="result-scores">
-              text: ${r.score_text.toFixed(2)} |
-              vec: ${r.score_vector.toFixed(2)} |
-              hybrid: ${r.score_hybrid.toFixed(2)}
+              text: ${Number(r.score_text).toFixed(2)} |
+              vec: ${Number(r.score_vector).toFixed(2)} |
+              hybrid: ${Number(r.score_hybrid).toFixed(2)}
             </div>
           `;
           searchResults.appendChild(div);
@@ -294,6 +310,16 @@
       }
     }
 
+    searchBtn.addEventListener("click", runSearch);
+    qInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault(); runSearch();
+      }
+    });
+
+    // =======================
+    // Chat
+    // =======================
     async function runChat() {
       chatError.style.display = "none";
       chatError.textContent = "";
@@ -314,28 +340,12 @@
         const res = await fetch(`${API_BASE}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question }),
+          body: JSON.stringify({ question })
         });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
         const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
         chatAnswer.textContent = data.answer || "(No answer)";
-        if (data.sources && data.sources.length) {
-          const ul = document.createElement("ul");
-          ul.className = "sources";
-          for (const s of data.sources) {
-            const li = document.createElement("li");
-            li.innerHTML = `
-              <strong>${escapeHtml(s.title)}</strong>
-              [${s.entity_type}] • ₹${s.amount} •
-              hybrid ${s.score_hybrid.toFixed(2)}
-            `;
-            ul.appendChild(li);
-          }
-          chatSources.innerHTML = "<h4>Sources</h4>";
-          chatSources.appendChild(ul);
-        }
+        chatSources.innerHTML = renderSources(data.sources);
       } catch (err) {
         chatError.textContent = "Chat failed: " + err.message;
         chatError.style.display = "block";
@@ -345,28 +355,90 @@
       }
     }
 
-    function escapeHtml(str) {
-      return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-    }
-
-    searchBtn.addEventListener("click", runSearch);
     chatBtn.addEventListener("click", runChat);
-
-    qInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        runSearch();
-      }
-    });
     chatQuestion.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        runChat();
+        e.preventDefault(); runChat();
       }
     });
+
+    // =======================
+    // IDP: Fetch & Process PDF by URL
+    // =======================
+    pdfFetchBtn?.addEventListener("click", async () => {
+      const url = (pdfUrl.value || "").trim();
+      pdfFetchMsg.textContent = "";
+      extractionsList.innerHTML = "";
+      if (!url) { pdfFetchMsg.textContent = "Enter a PDF URL."; return; }
+
+      pdfFetchBtn.disabled = true;
+      pdfFetchBtn.textContent = "Processing...";
+
+      try {
+        const res = await fetch(`${API_BASE}/documents/fetch`, {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+        lastDocId = data.doc_id;
+        pdfFetchMsg.textContent = `Processed: ${data.filename} (pages: ${data.page_count}, chunks: ${data.chunks_indexed}, fields: ${data.fields_extracted})`;
+
+        // Load extractions for the last processed doc
+        await refreshExtractions();
+      } catch (e) {
+        pdfFetchMsg.textContent = "Failed: " + e.message;
+      } finally {
+        pdfFetchBtn.disabled = false;
+        pdfFetchBtn.textContent = "Fetch & Process";
+      }
+    });
+
+    async function refreshExtractions() {
+      if (!lastDocId) return;
+      const ex = await fetch(`${API_BASE}/extractions/${lastDocId}`);
+      const rows = await ex.json();
+      extractionsList.innerHTML = rows.map(r => renderExtractionRow(r)).join("");
+    }
+
+    function renderExtractionRow(r) {
+      const conf = (r.confidence != null) ? Number(r.confidence).toFixed(2) : "—";
+      const approved = r.is_approved ? '<span class="pill">approved</span>' : '';
+      const evidence = (r.evidence && r.evidence.snippet) ? `<div class="muted">evidence: ${escapeHtml(r.evidence.snippet)}</div>` : '';
+      const val = escapeHtml(r.corrected_value || r.field_value || '');
+
+      return `
+        <div class="result-item">
+          <div class="result-header">
+            <span class="pill">${escapeHtml(r.schema_name)}</span>
+            <span class="pill">${escapeHtml(r.field_name)}</span>
+            <span>conf ${conf}</span>
+            ${approved}
+          </div>
+          <div class="result-body">value: ${val}</div>
+          ${evidence}
+          ${!r.is_approved ? `
+            <div class="row" style="margin-top:6px">
+              <input class="input" id="cv_${r.extract_id}" placeholder="Correct value..." />
+              <button class="btn" onclick="approveField('${r.extract_id}')">Approve</button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // expose approveField on window for inline onclick
+    window.approveField = async function(extract_id) {
+      const inp = document.getElementById(`cv_${extract_id}`);
+      const corrected_value = inp?.value || "";
+      const res = await fetch(`${API_BASE}/review/${extract_id}`, {
+        method:"POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ corrected_value })
+      });
+      if (res.ok) await refreshExtractions();
+    };
   </script>
 </body>
 </html>
