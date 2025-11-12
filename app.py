@@ -222,7 +222,7 @@ def run_hybrid_search(
                 id=meta["id"],
                 entity_type=meta["entity_type"],
                 title=meta["title"],
-                body_snippet=meta["body"][:260],
+                body_snippet=meta["body"][:5000],
                 amount=meta["amount"],
                 priority_score=meta["priority_score"],
                 score_text=st,
@@ -323,7 +323,7 @@ def extract_text_from_pdf_bytes(pdf_bytes: bytes, do_ocr_fallback: bool = True) 
     }
 
 
-def yield_chunks(filename: str, pages: List[Dict[str, Any]], max_tokens: int = 500, overlap: int = 80):
+def yield_chunks(filename: str, pages: List[Dict[str, Any]], max_tokens: int = 200, overlap: int = 40):
     """
     Simple paragraph/length-aware chunker. Keeps order; tags with page_no.
     """
@@ -684,9 +684,10 @@ def chat(req: ChatRequest):
         for h in hits:
             context_blocks.append(
                 f"[{h.entity_type} | amount={h.amount} | prio={h.priority_score}] "
-                f"{h.title}\n{h.body_snippet}"
+                f"{h.title}\n{h.body_snippet[:1000]}"
             )
-        context = "\n\n".join(context_blocks)
+            context = "\n\n".join(context_blocks)
+
     else:
         context = "No relevant records found."
 
