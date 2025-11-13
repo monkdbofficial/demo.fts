@@ -315,3 +315,13 @@ The right panel is Chatbot, backed by:
 - You may swap mistral + ollama with something else. For example, OpenAI, etc.
 - You may swap sentence transformers with something else. For example, OpenAI Embeddings, etc.
 - You may swap ag-news dataset used in this demo with something else. For example, custom datasets, etc. 
+
+## Update as on 13th Nov, 2025:
+
+Now this demo repo supports the below features.
+
+- Users can paste a URL of a PDF, and process the PDF.
+- PDF processing will chunk the content and store it in MonkDB (also embeds it using Sentence Transformers). 
+    - Please note that PDF processing, chunking, etc must come from application teams of orgs. MonkDB will act as the backend to store the chunks of content. 
+- Then users can chat with the document content (context window is set to 5000 for better results).
+- Users can search for keywords of PDF documents as well in the *global search* filter. However, please note that users must select **document** from the filter dropdown to search PDF docs.
