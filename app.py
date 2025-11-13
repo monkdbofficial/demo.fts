@@ -9,6 +9,7 @@ from fastapi import File, UploadFile, Body
 from pdfminer.high_level import extract_text as pdf_extract_text
 from pdf2image import convert_from_bytes
 import pytesseract
+import html as _html
 
 import requests
 from fastapi import FastAPI, Query, HTTPException
@@ -93,6 +94,19 @@ class ChatResponse(BaseModel):
 # Helpers
 # -------------------------
 
+TAG_RE = re.compile(r"<[^>]+>")
+WS_RE = re.compile(r"\s+")
+
+
+def _clean_snippet(txt: str, max_len: int = 320) -> str:
+    if not txt:
+        return ""
+    t = _html.unescape(txt)
+    t = TAG_RE.sub("", t)
+    t = WS_RE.sub(" ", t).strip()
+    return (t[:max_len].rstrip() + "…") if len(t) > max_len else t
+
+
 def normalize(scores: Dict[str, float]) -> Dict[str, float]:
     if not scores:
         return {}
@@ -138,13 +152,14 @@ def run_hybrid_search(
         vec_where.append("amount <= ?")
         vec_params.append(max_amount)
 
-    vec_sql = f"""
-        SELECT id, entity_type, title, body,
-               amount, priority_score, _score
+    vec_sql = """
+        SELECT id, entity_type, title, body, amount, priority_score, _score
         FROM doc.app_search
-        WHERE {' AND '.join(vec_where)}
-    """
-    cur.execute(vec_sql, tuple(vec_params))
+        WHERE {}
+        ORDER BY _score DESC
+        LIMIT ?
+        """.format(' AND '.join(vec_where))
+    cur.execute(vec_sql, tuple(vec_params + [k * 4]))
     vec_rows = cur.fetchall()
 
     # 3) Full-text search
@@ -221,8 +236,8 @@ def run_hybrid_search(
             SearchResult(
                 id=meta["id"],
                 entity_type=meta["entity_type"],
-                title=meta["title"],
-                body_snippet=meta["body"][:5000],
+                title=_clean_snippet(meta["title"], 180),
+                body_snippet=_clean_snippet(meta["body"], 5000),
                 amount=meta["amount"],
                 priority_score=meta["priority_score"],
                 score_text=st,
@@ -686,7 +701,7 @@ def chat(req: ChatRequest):
                 f"[{h.entity_type} | amount={h.amount} | prio={h.priority_score}] "
                 f"{h.title}\n{h.body_snippet[:1000]}"
             )
-            context = "\n\n".join(context_blocks)
+        context = "\n\n".join(context_blocks)
 
     else:
         context = "No relevant records found."

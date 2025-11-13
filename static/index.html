@@ -108,7 +108,7 @@
 <body>
   <div class="layout">
     <header class="header">
-      <h1>Unified Search, Chat & IDP Demo</h1>
+      <h1>Intelligent Document Processing</h1>
       <p>Hybrid full-text + vector search, chat over results, and PDF → text → extraction pipeline on MonkDB.</p>
     </header>
 
@@ -205,7 +205,34 @@
     const pdfFetchMsg = document.getElementById("pdfFetchMsg");
     const extractionsList = document.getElementById("extractionsList");
 
+    function toggleAmountLock() {
+      const isOrder = entityTypeInput.value === "order";
+      minAmountInput.disabled = maxAmountInput.disabled = !isOrder;
+
+      // optional visual cue
+      if (isOrder) {
+        minAmountInput.style.opacity = maxAmountInput.style.opacity = "1.0";
+      } else {
+        minAmountInput.style.opacity = maxAmountInput.style.opacity = "0.4";
+      }
+    }
+
+    entityTypeInput.addEventListener("change", toggleAmountLock);
+    toggleAmountLock();
+
+
     let lastDocId = null;
+
+    function highlight(text, query) {
+      if (!text || !query) return escapeHtml(text);
+      const terms = Array.from(new Set(query.toLowerCase().split(/\s+/).filter(t => t.length > 1)));
+      let out = escapeHtml(text);
+      for (const t of terms) {
+        const re = new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")})`, "gi");
+        out = out.replace(re, "<mark>$1</mark>");
+      }
+      return out;
+    }
 
     // =======================
     // Utilities
@@ -291,8 +318,8 @@
               <span>${fmtMoney(r.amount)}</span>
               <span>prio ${Number(r.priority_score).toFixed(2)}</span>
             </div>
-            <div class="result-title">${escapeHtml(r.title)}</div>
-            <div class="result-body">${escapeHtml(r.body_snippet)}</div>
+            <div class="result-title">${highlight(r.title, q)}</div>
+            <div class="result-body">${highlight(r.body_snippet, q)}</div>
             <div class="result-scores">
               text: ${Number(r.score_text).toFixed(2)} |
               vec: ${Number(r.score_vector).toFixed(2)} |
