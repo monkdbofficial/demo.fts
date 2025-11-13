@@ -1,6 +1,6 @@
-# Unified Search & Chat Demo (MonkDB + Hybrid Search + Mistral/Ollama)
+# Intelligent Document Processing
 
-This project demonstrates:
+This project demonstrates **Unified Search & Chat Demo** with MonkDB + Hybrid Search + Mistral/Ollama.
 
 - A global search UI that queries `doc.app_search` in MonkDB.
 - Full-text + vector hybrid ranking
