@@ -298,7 +298,7 @@ The right panel is Chatbot, backed by:
     - amount
     - hybrid score (for transparency)
 
-![Front End Display](assets/frontend.png)
+![Front End Display](assets/frontend_1.png)
 
 ### 5.3 How to interpret / use
 
